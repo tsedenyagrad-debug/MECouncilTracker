@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Communications Tracker — ME Council</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/msal.js/2.38.3/msal-browser.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#F7F6F2;--surface:#FFFFFF;--border:#E2E0D8;--border-strong:#C8C5BC;
+  --text:#1A1916;--text-muted:#6B6860;--text-faint:#9E9C97;
+  --accent:#1B3A6B;--accent-light:#EBF0F8;
+  --green:#2D6A4F;--green-bg:#EAF4EE;
+  --amber:#92540A;--amber-bg:#FEF3E2;
+  --blue:#1B3A6B;--blue-bg:#EBF0F8;
+  --purple:#4B3B8C;--purple-bg:#F0EDFB;
+  --gray:#4A4840;--gray-bg:#F1EFE8;
+  --red:#8B2020;--red-bg:#FDEAEA;
+  --font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --radius:6px;--radius-lg:10px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13px;line-height:1.5;min-height:100vh}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+
+/* Header */
+.header{background:var(--accent);color:#fff;padding:16px 24px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:50}
+.header-title{font-size:15px;font-weight:600}
+.header-sub{font-size:10px;opacity:.6;font-family:var(--mono);margin-top:2px}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.sync-status{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1)}
+.sync-status.ok{color:#7BC8A4;border-color:#7BC8A490}
+.sync-status.syncing{color:#FAC775}
+.sync-status.err{color:#F09595}
+.user-pill{font-family:var(--mono);font-size:10px;opacity:.7}
+
+/* Layout */
+.layout{display:flex;min-height:calc(100vh - 53px)}
+.sidebar{width:176px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);padding:14px 0;position:sticky;top:53px;height:calc(100vh - 53px);overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:9px;padding:8px 16px;font-size:12px;cursor:pointer;color:var(--text-muted);transition:all .15s;border-left:2px solid transparent;user-select:none}
+.nav-item:hover{background:var(--bg);color:var(--text)}
+.nav-item.active{color:var(--accent);font-weight:500;border-left-color:var(--accent);background:var(--accent-light)}
+.nav-count{margin-left:auto;font-family:var(--mono);font-size:10px;background:var(--bg);padding:1px 6px;border-radius:10px;color:var(--text-faint);border:1px solid var(--border)}
+.nav-divider{height:1px;background:var(--border);margin:8px 14px}
+.nav-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);padding:10px 16px 4px;font-family:var(--mono)}
+.main{flex:1;padding:22px 26px;overflow-x:hidden}
+.panel{display:none}.panel.active{display:block}
+
+/* Loading overlay */
+#loading-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;gap:14px}
+#loading-screen.hidden{display:none}
+.spinner{width:28px;height:28px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.load-msg{font-family:var(--mono);font-size:12px;color:var(--text-muted)}
+
+/* Login screen */
+#login-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:998;gap:18px}
+#login-screen.hidden{display:none}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:36px 40px;text-align:center;max-width:380px}
+.login-logo{font-size:28px;margin-bottom:14px}
+.login-title{font-size:17px;font-weight:600;margin-bottom:6px}
+.login-sub{font-size:12px;color:var(--text-muted);margin-bottom:24px;line-height:1.6}
+
+/* Page header */
+.page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px}
+.page-title{font-size:18px;font-weight:600}
+.page-sub{font-size:11px;color:var(--text-faint);margin-top:3px;font-family:var(--mono)}
+.btn{padding:7px 14px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);font-size:12px;font-family:var(--font);cursor:pointer;color:var(--text);transition:all .15s}
+.btn:hover{background:var(--bg);border-color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-primary:hover{background:#0f2a52}
+.btn-sm{padding:4px 10px;font-size:11px}
+.btn-danger{color:var(--red);border-color:#f0c0c0}.btn-danger:hover{background:var(--red-bg)}
+
+/* Stats */
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px}
+.stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-faint);font-family:var(--mono);margin-bottom:6px}
+.stat-value{font-size:26px;font-weight:600;color:var(--text);font-family:var(--mono);line-height:1}
+.stat-sub{font-size:11px;color:var(--text-faint);margin-top:4px}
+.mini-bar{background:var(--bg);border-radius:4px;height:4px;overflow:hidden;margin-top:6px}
+.mini-fill{height:100%;background:var(--accent);border-radius:4px;transition:width .4s}
+
+/* Badges */
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500;white-space:nowrap;font-family:var(--mono)}
+.bg-green{background:var(--green-bg);color:var(--green)}
+.bg-amber{background:var(--amber-bg);color:var(--amber)}
+.bg-blue{background:var(--blue-bg);color:var(--blue)}
+.bg-purple{background:var(--purple-bg);color:var(--purple)}
+.bg-gray{background:var(--gray-bg);color:var(--gray)}
+.bg-red{background:var(--red-bg);color:var(--red)}
+
+/* Toolbar */
+.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.search{padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--font);background:var(--surface);color:var(--text);width:210px}
+.search:focus{outline:none;border-color:var(--accent)}
+.filter-sel{padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--font);background:var(--surface);color:var(--text);cursor:pointer}
+
+/* Table */
+.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+.tbl-scroll{overflow-x:auto}
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{text-align:left;padding:9px 11px;font-size:10px;font-weight:500;color:var(--text-faint);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);background:var(--bg);font-family:var(--mono);white-space:nowrap}
+.tbl td{padding:8px 11px;border-bottom:1px solid var(--border);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:#FAFAF7}
+
+/* Promo select */
+.promo-sel{padding:3px 7px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:var(--mono);cursor:pointer}
+.promo-sel.done{background:var(--green-bg);color:var(--green);border-color:#b8ddc8}
+.promo-sel.progress{background:var(--amber-bg);color:var(--amber);border-color:#f0d4a8}
+.promo-sel.none{color:var(--text-faint)}
+
+/* Promo overview */
+.section-title{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);font-family:var(--mono);margin:20px 0 10px}
+.promo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px}
+.promo-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:13px 15px}
+.promo-card-title{font-size:12px;font-weight:500;color:var(--text);margin-bottom:10px;line-height:1.4}
+.promo-field-label{font-size:10px;color:var(--text-faint);font-family:var(--mono)}
+.promo-score{font-family:var(--mono);font-size:11px;color:var(--text-faint);margin-left:auto}
+
+/* Charts */
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:4px}
+.chart-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px}
+.chart-title{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-faint);font-family:var(--mono);margin-bottom:12px}
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.bar-lbl{width:120px;font-size:11px;color:var(--text-muted);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0}
+.bar-track{flex:1;background:var(--bg);border-radius:4px;height:17px;overflow:hidden}
+.bar-fill{height:100%;background:var(--accent);border-radius:4px;display:flex;align-items:center;padding-left:6px;font-size:10px;color:#fff;font-family:var(--mono);font-weight:500}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(10,15,25,.5);display:none;align-items:center;justify-content:center;z-index:200;backdrop-filter:blur(2px)}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border-radius:var(--radius-lg);border:1px solid var(--border);padding:24px;width:520px;max-width:95vw;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.15)}
+.modal-title{font-size:15px;font-weight:600;margin-bottom:16px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:11px;color:var(--text-muted);font-weight:500;margin-bottom:4px;font-family:var(--mono)}
+.field input,.field select,.field textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:var(--font);background:var(--surface);color:var(--text)}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent)}
+.field textarea{resize:vertical;min-height:58px}
+.promo-divider{border-top:1px solid var(--border);margin:14px 0;padding-top:12px}
+.promo-divider-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);font-family:var(--mono);margin-bottom:12px}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;border-top:1px solid var(--border);padding-top:14px}
+
+/* Config banner */
+#config-banner{background:#FEF3E2;border:1px solid #f0d4a8;border-radius:var(--radius);padding:12px 16px;margin-bottom:18px;font-size:12px;color:var(--amber);display:none;align-items:center;gap:10px}
+#config-banner.show{display:flex}
+#config-banner a{color:var(--amber);font-weight:500;text-decoration:underline}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading-screen">
+  <div class="spinner"></div>
+  <div class="load-msg" id="load-msg">Connecting to Microsoft 365…</div>
+</div>
+
+<!-- Login -->
+<div id="login-screen" class="hidden">
+  <div class="login-card">
+    <div class="login-logo">📊</div>
+    <div class="login-title">Communications Tracker</div>
+    <div class="login-sub">Middle East Council on Global Affairs<br>Sign in with your Microsoft 365 account to access the shared dashboard.</div>
+    <button class="btn btn-primary" style="width:100%;padding:10px" onclick="signIn()">Sign in with Microsoft</button>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app" style="display:none">
+  <div class="header">
+    <div>
+      <div class="header-title">Communications Tracker</div>
+      <div class="header-sub">Middle East Council on Global Affairs</div>
+    </div>
+    <div class="header-right">
+      <span id="sync-status" class="sync-status">ready</span>
+      <span id="user-pill" class="user-pill"></span>
+      <button class="btn btn-sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1);font-size:11px" onclick="signOut()">Sign out</button>
+      <button class="btn btn-primary" style="font-size:12px" id="add-btn">+ Add item</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="nav-label">Views</div>
+      <div class="nav-item active" data-tab="overview">◈ Overview</div>
+      <div class="nav-divider"></div>
+      <div class="nav-label">Outputs</div>
+      <div class="nav-item" data-tab="publications">◻ Publications <span class="nav-count" id="nc-pub">–</span></div>
+      <div class="nav-item" data-tab="afkar">◻ Afkar <span class="nav-count" id="nc-afk">–</span></div>
+      <div class="nav-item" data-tab="podcast">◻ Podcast <span class="nav-count" id="nc-pod">–</span></div>
+      <div class="nav-item" data-tab="events">◻ Events <span class="nav-count" id="nc-evt">–</span></div>
+    </nav>
+
+    <main class="main">
+      <div id="config-banner">
+        ⚠️ Dashboard not configured yet. <a href="#" onclick="showConfig()">Enter your Excel file settings</a> to connect to OneDrive.
+      </div>
+
+      <div id="overview" class="panel active">
+        <div class="page-header">
+          <div><div class="page-title">Overview</div><div class="page-sub">All outputs & promotional progress</div></div>
+          <button class="btn btn-sm" onclick="loadAllData(true)">↻ Refresh</button>
+        </div>
+        <div class="stat-row" id="stats-grid"></div>
+        <div class="chart-row">
+          <div class="chart-block"><div class="chart-title">Publication statuses</div><div id="pub-chart"></div></div>
+          <div class="chart-block"><div class="chart-title">Event statuses</div><div id="evt-chart"></div></div>
+        </div>
+        <div class="section-title">Promotional progress — all outputs</div>
+        <div id="promo-overview"></div>
+      </div>
+
+      <div id="publications" class="panel">
+        <div class="page-header"><div><div class="page-title">Publications</div><div class="page-sub" id="pub-sub"></div></div></div>
+        <div class="toolbar">
+          <input class="search" placeholder="Search…" id="pub-search">
+          <select class="filter-sel" id="pub-filter"><option value="">All statuses</option></select>
+        </div>
+        <div class="table-wrap tbl-scroll">
+          <table class="tbl"><thead><tr><th>Type</th><th>Title</th><th>Author</th><th>Status</th><th>Due</th><th>Social</th><th>Newsletter</th><th>Website</th><th></th></tr></thead>
+          <tbody id="pub-tbody"></tbody></table>
+        </div>
+      </div>
+
+      <div id="afkar" class="panel">
+        <div class="page-header"><div><div class="page-title">Afkar</div><div class="page-sub" id="afk-sub"></div></div></div>
+        <div class="toolbar"><input class="search" placeholder="Search…" id="afk-search"></div>
+        <div class="table-wrap tbl-scroll">
+          <table class="tbl"><thead><tr><th>Topic</th><th>Author</th><th>Title</th><th>Status</th><th>Due</th><th>Social</th><th>Website</th><th></th></tr></thead>
+          <tbody id="afk-tbody"></tbody></table>
+        </div>
+      </div>
+
+      <div id="podcast" class="panel">
+        <div class="page-header"><div><div class="page-title">Podcast</div><div class="page-sub" id="pod-sub"></div></div></div>
+        <div class="table-wrap tbl-scroll">
+          <table class="tbl"><thead><tr><th>Guest</th><th>Title</th><th>Status</th><th>Pub. date</th><th>Social</th><th>Newsletter</th><th>Website</th><th>Link</th><th></th></tr></thead>
+          <tbody id="pod-tbody"></tbody></table>
+        </div>
+      </div>
+
+      <div id="events" class="panel">
+        <div class="page-header"><div><div class="page-title">Events</div><div class="page-sub" id="evt-sub"></div></div></div>
+        <div class="toolbar">
+          <input class="search" placeholder="Search…" id="evt-search">
+          <select class="filter-sel" id="evt-filter"><option value="">All statuses</option></select>
+        </div>
+        <div class="table-wrap tbl-scroll">
+          <table class="tbl"><thead><tr><th>Type</th><th>Title</th><th>Date</th><th>Status</th><th>Moderator</th><th>Invites</th><th>Poster</th><th>Social</th><th>Newsletter</th><th>Link</th><th></th></tr></thead>
+          <tbody id="evt-tbody"></tbody></table>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Config modal -->
+<div class="modal-overlay" id="config-overlay">
+  <div class="modal">
+    <div class="modal-title">Connect to OneDrive Excel file</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;line-height:1.7">
+      Paste the settings from your Azure app registration and your Excel file path on OneDrive. This is saved in your browser only.
+    </p>
+    <div class="field"><label>Azure Client ID (Application ID)</label><input type="text" id="cfg-clientid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></div>
+    <div class="field"><label>Azure Tenant ID</label><input type="text" id="cfg-tenantid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></div>
+    <div class="field"><label>OneDrive Excel file path (from root of OneDrive)</label><input type="text" id="cfg-filepath" placeholder="Documents/comms-tracker.xlsx"></div>
+    <div style="background:var(--blue-bg);border:1px solid #c5d8f0;border-radius:var(--radius);padding:12px;font-size:11px;color:var(--blue);line-height:1.8;margin-top:4px">
+      <strong>Where to find these:</strong><br>
+      Client ID & Tenant ID → Azure Portal → App registrations → your app → Overview<br>
+      File path → the path of your .xlsx file relative to your OneDrive root
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="document.getElementById('config-overlay').classList.remove('open')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveConfig()">Save & connect</button>
+    </div>
+  </div>
+</div>
+
+<!-- Item modal -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Add item</div>
+    <div id="modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-danger btn-sm" id="modal-delete" style="margin-right:auto;display:none" onclick="deleteItem()">Delete</button>
+      <button class="btn" id="modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-save">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── CONFIG ────────────────────────────────────────────────────────────────
+const DEFAULT_CONFIG = {
+  clientId: '2b94d77e-2e13-4336-a516-246822d58d53',
+  tenantId: '93756c63-05a4-4e35-9f65-87684af8a24d',
+  filePath: 'Communications_Tracker_with_Dashboard - Copy.xlsx'
+};
+
+// Sheet names in your Excel file — must match exactly
+const SHEET_NAMES = {
+  publications: 'Publications',
+  afkar: 'Afkar',
+  podcast: 'Podcast',
+  events: 'Events'
+};
+
+// Column mappings — order must match your Excel sheet columns (A, B, C...)
+const COLS = {
+  publications: ['type','title','author','status','due','notes','promo_social','promo_newsletter','promo_website'],
+  afkar:        ['topic','author','title','status','due','link','promo_social','promo_website'],
+  podcast:      ['guest','title','status','due','link','promo_social','promo_newsletter','promo_website'],
+  events:       ['type','title','date','status','moderator','link','notes','promo_invites','promo_poster','promo_social','promo_newsletter']
+};
+
+const PROMO_OPTS = ['Not started','In progress','Done'];
+// ───────────────────────────────────────────────────────────────────────────
+
+let msalInstance = null;
+let accessToken = null;
+let data = { publications:[], afkar:[], podcast:[], events:[] };
+let fileId = null; // resolved OneDrive file ID
+
+function getConfig() {
+  const saved = JSON.parse(localStorage.getItem('mecouncil_cfg') || '{}');
+  return { ...DEFAULT_CONFIG, ...saved };
+}
+
+function saveConfig() {
+  const cfg = {
+    clientId: document.getElementById('cfg-clientid').value.trim(),
+    tenantId: document.getElementById('cfg-tenantid').value.trim(),
+    filePath: document.getElementById('cfg-filepath').value.trim()
+  };
+  localStorage.setItem('mecouncil_cfg', JSON.stringify(cfg));
+  document.getElementById('config-overlay').classList.remove('open');
+  location.reload();
+}
+
+function showConfig() {
+  const cfg = getConfig();
+  document.getElementById('cfg-clientid').value = cfg.clientId || '';
+  document.getElementById('cfg-tenantid').value = cfg.tenantId || '';
+  document.getElementById('cfg-filepath').value = cfg.filePath || '';
+  document.getElementById('config-overlay').classList.add('open');
+}
+
+// ─── MSAL AUTH ──────────────────────────────────────────────────────────────
+async function initMsal() {
+  const cfg = getConfig();
+  if (!cfg.clientId || !cfg.tenantId) {
+    showLoadingScreen(false);
+    showLoginScreen(false);
+    showApp(true);
+    document.getElementById('config-banner').classList.add('show');
+    // Load demo data so UI is visible
+    loadDemoData();
+    renderAll();
+    return;
+  }
+
+  msalInstance = new msal.PublicClientApplication({
+    auth: {
+      clientId: cfg.clientId,
+      authority: `https://login.microsoftonline.com/${cfg.tenantId}`,
+      redirectUri: window.location.href.split('?')[0]
+    },
+    cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
+  });
+
+  await msalInstance.initialize();
+
+  // Handle redirect
+  try {
+    const result = await msalInstance.handleRedirectPromise();
+    if (result) accessToken = result.accessToken;
+  } catch(e) { console.error(e); }
+
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0 || accessToken) {
+    if (!accessToken) await acquireToken(accounts[0]);
+    showLoadingScreen(false);
+    showLoginScreen(false);
+    showApp(true);
+    const account = msalInstance.getAllAccounts()[0];
+    if (account) document.getElementById('user-pill').textContent = account.name || account.username;
+    await loadAllData(false);
+  } else {
+    showLoadingScreen(false);
+    showLoginScreen(true);
+  }
+}
+
+async function acquireToken(account) {
+  const scopes = ['Files.ReadWrite', 'User.Read'];
+  try {
+    const result = await msalInstance.acquireTokenSilent({ scopes, account });
+    accessToken = result.accessToken;
+  } catch(e) {
+    try {
+      const result = await msalInstance.acquireTokenPopup({ scopes });
+      accessToken = result.accessToken;
+    } catch(e2) { console.error('Token error', e2); }
+  }
+}
+
+async function signIn() {
+  const scopes = ['Files.ReadWrite', 'User.Read'];
+  try {
+    await msalInstance.loginRedirect({ scopes });
+  } catch(e) {
+    try {
+      const result = await msalInstance.loginPopup({ scopes });
+      accessToken = result.accessToken;
+      location.reload();
+    } catch(e2) { console.error(e2); }
+  }
+}
+
+function signOut() {
+  if (msalInstance) msalInstance.logoutRedirect();
+  else location.reload();
+}
+
+// ─── GRAPH API ──────────────────────────────────────────────────────────────
+async function graphGet(url) {
+  const r = await fetch('https://graph.microsoft.com/v1.0/' + url, {
+    headers: { Authorization: 'Bearer ' + accessToken }
+  });
+  if (!r.ok) throw new Error(`Graph error ${r.status}: ${await r.text()}`);
+  return r.json();
+}
+
+async function graphPatch(url, body) {
+  const r = await fetch('https://graph.microsoft.com/v1.0/' + url, {
+    method: 'PATCH',
+    headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(`Graph error ${r.status}: ${await r.text()}`);
+  return r.json();
+}
+
+async function resolveFileId() {
+  if (fileId) return fileId;
+  const cfg = getConfig();
+  const name = cfg.filePath.split('/').pop();
+  try {
+    const result = await graphGet('me/drive/root:/' + encodeURIComponent(cfg.filePath));
+    fileId = result.id;
+  } catch(e) {
+    const search = await graphGet('me/drive/root/search(q='' + encodeURIComponent(name) + '')');
+    const match = (search.value || []).find(f => f.name === name);
+    if (!match) throw new Error('File not found: ' + cfg.filePath);
+    fileId = match.id;
+  }
+  return fileId;
+}
+
+async function readSheet(sheetName) {
+  const id = await resolveFileId();
+  const result = await graphGet(`me/drive/items/${id}/workbook/worksheets/${encodeURIComponent(sheetName)}/usedRange`);
+  return result.values || [];
+}
+
+async function writeRow(sheetName, rowIndex, values) {
+  // rowIndex is 1-based (1 = header row, 2 = first data row)
+  const id = await resolveFileId();
+  const cols = values.length;
+  const colLetter = String.fromCharCode(64 + cols);
+  const range = `A${rowIndex}:${colLetter}${rowIndex}`;
+  await graphPatch(
+    `me/drive/items/${id}/workbook/worksheets/${encodeURIComponent(sheetName)}/range(address='${range}')`,
+    { values: [values] }
+  );
+}
+
+async function appendRow(sheetName, values) {
+  const rows = await readSheet(sheetName);
+  const nextRow = rows.length + 1;
+  await writeRow(sheetName, nextRow, values);
+  return nextRow;
+}
+
+async function deleteRow(sheetName, rowIndex) {
+  // Clear the row contents (Graph API doesn't easily delete rows)
+  const id = await resolveFileId();
+  const range = `A${rowIndex}:Z${rowIndex}`;
+  await graphPatch(
+    `me/drive/items/${id}/workbook/worksheets/${encodeURIComponent(sheetName)}/range(address='${range}')`,
+    { values: [Array(26).fill('')] }
+  );
+}
+
+// ─── DATA LAYER ─────────────────────────────────────────────────────────────
+function rowToObj(section, row) {
+  const cols = COLS[section];
+  const obj = { _row: row._row };
+  cols.forEach((col, i) => {
+    if (col.startsWith('promo_')) {
+      if (!obj.promo) obj.promo = {};
+      obj.promo[col.replace('promo_', '')] = row[i] || 'Not started';
+    } else {
+      obj[col] = row[i] != null ? String(row[i]) : '';
+    }
+  });
+  return obj;
+}
+
+function objToRow(section, obj) {
+  const cols = COLS[section];
+  return cols.map(col => {
+    if (col.startsWith('promo_')) return (obj.promo || {})[col.replace('promo_', '')] || 'Not started';
+    return obj[col] || '';
+  });
+}
+
+async function loadAllData(showSpinner = true) {
+  if (!accessToken) return;
+  setSyncStatus('syncing', 'syncing…');
+  try {
+    for (const sec of ['publications','afkar','podcast','events']) {
+      const rows = await readSheet(SHEET_NAMES[sec]);
+      // Skip header row (index 0), data starts at index 1 → Excel row 2
+      data[sec] = rows.slice(1)
+        .map((row, i) => ({ ...row, _row: i + 2 }))
+        .filter(row => row[0])
+        .map(row => rowToObj(sec, row));
+    }
+    setSyncStatus('ok', 'synced');
+    renderAll();
+  } catch(e) {
+    setSyncStatus('err', 'sync error');
+    console.error(e);
+    if (e.message.includes('404') || e.message.includes('itemNotFound')) {
+      document.getElementById('config-banner').classList.add('show');
+      loadDemoData();
+      renderAll();
+    }
+  }
+}
+
+async function saveItem(section, item) {
+  if (!accessToken) { renderAll(); return; }
+  setSyncStatus('syncing', 'saving…');
+  try {
+    const values = objToRow(section, item);
+    if (item._row) {
+      await writeRow(SHEET_NAMES[section], item._row, values);
+    } else {
+      const newRow = await appendRow(SHEET_NAMES[section], values);
+      item._row = newRow;
+    }
+    setSyncStatus('ok', 'saved ✓');
+  } catch(e) {
+    setSyncStatus('err', 'save failed');
+    console.error(e);
+  }
+}
+
+async function removeItem(section, item) {
+  if (!accessToken || !item._row) return;
+  setSyncStatus('syncing', 'deleting…');
+  try {
+    await deleteRow(SHEET_NAMES[section], item._row);
+    setSyncStatus('ok', 'deleted');
+  } catch(e) {
+    setSyncStatus('err', 'delete failed');
+    console.error(e);
+  }
+}
+
+function setSyncStatus(state, msg) {
+  const el = document.getElementById('sync-status');
+  el.className = 'sync-status ' + state;
+  el.textContent = msg;
+}
+
+function loadDemoData() {
+  data = {
+    publications:[
+      {type:'Issue Brief',title:'How the Iran War Reshaped U.S. Politics, Power, and Public Debate',author:'Khalid Al-Jaber',status:'Editing in English',due:'46132',notes:'',promo:{social:'Not started',newsletter:'Not started',website:'Not started'}},
+      {type:'Issue Brief',title:'Gulf and the Greater Maghreb',author:'Yahia Zoubir',status:'Ready for publishing',due:'On hold',notes:'',promo:{social:'Not started',newsletter:'Not started',website:'Not started'}},
+      {type:'Policy Note',title:'US-Iran War and Higher Education in Qatar',author:'Doaa Ghazerddine',status:'Copy Editing',due:'46135',notes:'',promo:{social:'Not started',newsletter:'Not started',website:'Not started'}},
+      {type:'Situation Assessment',title:'Energy Markets Under the Shock of the Iranian War',author:'Executive Office',status:'Fact Checking',due:'46131',notes:'',promo:{social:'Not started',newsletter:'Not started',website:'Not started'}},
+      {type:'Situation Assessment',title:"Qatar's Strategic Balancing Amid Iran Escalation",author:'Frederick',status:'With author',due:'46134',notes:'',promo:{social:'Not started',newsletter:'Not started',website:'Not started'}},
+      {type:'Palestine Dossier',title:'Rupture and Representation: The Palestinian National Movement After October 7',author:'Omar Rahman & Mouin Rabbani',status:'Ch. 1 ready for publishing',due:'46131',notes:'',promo:{social:'Not started',newsletter:'Not started',website:'Not started'}},
+      {type:'Event Report',title:'Doha Global South Health Policy Initiative: Annual Convening 2025',author:'Ilesh Jani; Theresa Madubuko',status:'Finalizing Layout',due:'NA',notes:'',promo:{social:'Not started',newsletter:'Not started',website:'Not started'}},
+      {type:'Event Report',title:'Water Diplomacy and Governance in the MENA Region',author:'',status:'Finalizing Layout',due:'NA',notes:'',promo:{social:'Not started',newsletter:'Not started',website:'Not started'}},
+    ],
+    afkar:[
+      {topic:'Qatar Foreign Policy',author:'Said Bin Abdullah Al Bimani',title:'',status:'Review & editing – Arabic in progress',due:'',link:'',promo:{social:'Not started',website:'Not started'}},
+      {topic:'Iran War and Iraq',author:'Zeidon Al Kinani',title:"The Iran War's Shadow on Iraq's Preexisting Dynamics",status:'English submitted – needs review',due:'',link:'',promo:{social:'Not started',website:'Not started'}},
+      {topic:'Iran War',author:'Mahjoub Zweiri',title:"Iran's Rulers Have Survived Every War for Five Centuries",status:'English editing in process',due:'46121',link:'',promo:{social:'Not started',website:'Not started'}},
+      {topic:'Iran War / Lebanon',author:'Joseph Bahout',title:'',status:'Draft to be submitted in two weeks',due:'',link:'',promo:{social:'Not started',website:'Not started'}},
+      {topic:'Iran War',author:'Khalid al Khanji',title:'Gulf Disillusionment: Between a Present Conscience and an Absent Reality',status:'English editing in process',due:'',link:'',promo:{social:'Not started',website:'Not started'}},
+      {topic:'Iran / War / Qatar Stability',author:'Nayef al Nabet',title:'Absorbing the Shock: How Qatar Sustained Stability in a Volatile Region',status:'Pitch',due:'',link:'',promo:{social:'Not started',website:'Not started'}},
+    ],
+    podcast:[
+      {guest:'Khalid al Khinji',title:'السرديات والمزاج الشعبي في منطقة الخليج',status:'April 7',due:'46121',link:'',promo:{social:'Not started',newsletter:'Not started',website:'Not started'}},
+    ],
+    events:[
+      {type:'Webinar',title:'NATO Under Pressure: How the Iran War Is Testing the Alliance',date:'46132',status:'Confirmed',moderator:'Hana',link:'https://studio.restream.io/emv-dkrk-rmv',notes:'',promo:{invites:'Not started',poster:'Not started',social:'Not started',newsletter:'Not started'}},
+      {type:'Webinar',title:'الحرب الإيرانية والصدمة الاقتصادية: هل تصمد الأسواق العالمية؟',date:'46132',status:'Confirmed',moderator:'Faozi',link:'https://studio.restream.io/etm-qwqr-qfs',notes:'',promo:{invites:'Not started',poster:'Not started',social:'Not started',newsletter:'Not started'}},
+      {type:'Webinar',title:'عودة الحرب أو حصار خانق: مسارات التصعيد في الحرب الإيرانية',date:'46132',status:'Confirmed',moderator:'Faozi',link:'',notes:'',promo:{invites:'Not started',poster:'Not started',social:'Not started',newsletter:'Not started'}},
+      {type:'Online Panel',title:'تحوّلات الوعي المعرفي: من الاستشراق الكلاسيكي إلى الاستخلاج المعاصر',date:'46133',status:'Confirmed',moderator:'Faozi',link:'',notes:'',promo:{invites:'Not started',poster:'Not started',social:'Not started',newsletter:'Not started'}},
+      {type:'Online Panel',title:"Trump's Iran Gamble: The Politics of War with Iran",date:'46134',status:'Confirmed',moderator:'Omar',link:'',notes:'',promo:{invites:'Not started',poster:'Not started',social:'Not started',newsletter:'Not started'}},
+      {type:'Webinar',title:"Trump's Iran War: Domestic Politics and Public Opinion",date:'46139',status:'TBC',moderator:'Hana',link:'',notes:'',promo:{invites:'Not started',poster:'Not started',social:'Not started',newsletter:'Not started'}},
+    ]
+  };
+}
+
+// ─── UI HELPERS ──────────────────────────────────────────────────────────────
+function showLoadingScreen(v) { document.getElementById('loading-screen').classList.toggle('hidden', !v); }
+function showLoginScreen(v)   { document.getElementById('login-screen').classList.toggle('hidden', !v); }
+function showApp(v)           { document.getElementById('app').style.display = v ? 'block' : 'none'; }
+
+const excelDate = n => {
+  if (!n || isNaN(n)) return n || '';
+  const d = new Date((Number(n) - 25569) * 86400000);
+  return d.toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'});
+};
+
+const statusColor = s => {
+  if (!s) return 'bg-gray';
+  const l = s.toLowerCase();
+  if (l.includes('publish')||l.includes('ready')||l.includes('confirmed')||l.includes('april')) return 'bg-green';
+  if (l.includes('editing')||l.includes('copy')||l.includes('layout')||l.includes('review')||l.includes('process')||l.includes('finaliz')) return 'bg-amber';
+  if (l.includes('tbc')||l.includes('pitch')||l.includes('draft')||l.includes('hold')||l.includes('author')||l.includes('submitted')) return 'bg-blue';
+  if (l.includes('fact')||l.includes('check')) return 'bg-purple';
+  return 'bg-gray';
+};
+
+const promoClass = v => v==='Done'?'done':v==='In progress'?'progress':'none';
+
+const promoSel = (sec, idx, field, val) =>
+  `<select class="promo-sel ${promoClass(val||'Not started')}" onchange="updatePromo('${sec}',${idx},'${field}',this.value)">${
+    PROMO_OPTS.map(o=>`<option${(val||'Not started')===o?' selected':''}>${o}</option>`).join('')
+  }</select>`;
+
+window.updatePromo = async (sec, idx, field, val) => {
+  data[sec][idx].promo = data[sec][idx].promo || {};
+  data[sec][idx].promo[field] = val;
+  const sel = event.target;
+  sel.className = 'promo-sel ' + promoClass(val);
+  renderStats();
+  renderPromoOverview();
+  await saveItem(sec, data[sec][idx]);
+};
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+function renderStats() {
+  const pubReady = data.publications.filter(p=>p.status.toLowerCase().includes('ready')||p.status.toLowerCase().includes('publish')).length;
+  const evtConf  = data.events.filter(e=>e.status.toLowerCase()==='confirmed').length;
+  const allPromo = [...data.publications,...data.podcast,...data.events].flatMap(i=>Object.values(i.promo||{}));
+  const promoDone = allPromo.filter(v=>v==='Done').length;
+  const promoTotal = allPromo.length;
+  const pct = promoTotal ? Math.round(promoDone/promoTotal*100) : 0;
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Publications</div><div class="stat-value">${data.publications.length}</div><div class="stat-sub">${pubReady} ready to publish</div></div>
+    <div class="stat-card"><div class="stat-label">Afkar</div><div class="stat-value">${data.afkar.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Podcast</div><div class="stat-value">${data.podcast.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Events</div><div class="stat-value">${data.events.length}</div><div class="stat-sub">${evtConf} confirmed</div></div>
+    <div class="stat-card"><div class="stat-label">Promo done</div><div class="stat-value">${promoDone}<span style="font-size:13px;color:var(--text-faint)">/${promoTotal}</span></div>
+      <div class="mini-bar"><div class="mini-fill" style="width:${pct}%"></div></div>
+      <div class="stat-sub" style="margin-top:4px">${pct}% complete</div>
+    </div>`;
+  document.getElementById('nc-pub').textContent = data.publications.length;
+  document.getElementById('nc-afk').textContent = data.afkar.length;
+  document.getElementById('nc-pod').textContent = data.podcast.length;
+  document.getElementById('nc-evt').textContent = data.events.length;
+}
+
+function barChart(cid, items, key) {
+  const counts = {};
+  items.forEach(i => { const s=(i[key]||'Unknown').split(/[–-]/)[0].trim().slice(0,22); counts[s]=(counts[s]||0)+1; });
+  const max = Math.max(...Object.values(counts), 1);
+  document.getElementById(cid).innerHTML = Object.entries(counts).map(([s,c]) => `
+    <div class="bar-row">
+      <div class="bar-lbl" title="${s}">${s}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c/max*100)}%">${c}</div></div>
+    </div>`).join('');
+}
+
+function renderPromoOverview() {
+  const sections = [
+    {key:'publications',label:'Publications',fields:['social','newsletter','website']},
+    {key:'podcast',label:'Podcast',fields:['social','newsletter','website']},
+    {key:'events',label:'Events',fields:['invites','poster','social','newsletter']},
+  ];
+  let html = '';
+  sections.forEach(sec => {
+    if (!data[sec.key].length) return;
+    html += `<div class="section-title">${sec.label}</div><div class="promo-grid">`;
+    data[sec.key].forEach((item, idx) => {
+      const p = item.promo || {};
+      const done = sec.fields.filter(f=>p[f]==='Done').length;
+      const total = sec.fields.length;
+      const pct = Math.round(done/total*100);
+      const title = (item.title||item.guest||'Untitled').slice(0,55);
+      html += `<div class="promo-card">
+        <div class="promo-card-title">${title}${title.length>=55?'…':''}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
+          ${sec.fields.map(f=>`<div style="display:flex;flex-direction:column;gap:3px;align-items:center">
+            <span class="promo-field-label">${f}</span>
+            <select class="promo-sel ${promoClass(p[f]||'Not started')}" onchange="updatePromo('${sec.key}',${idx},'${f}',this.value)">${
+              PROMO_OPTS.map(o=>`<option${(p[f]||'Not started')===o?' selected':''}>${o}</option>`).join('')
+            }</select>
+          </div>`).join('')}
+          <div style="margin-left:auto;text-align:right">
+            <div class="promo-score">${done}/${total}</div>
+            <div class="mini-bar" style="width:56px;margin-top:4px"><div class="mini-fill" style="width:${pct}%"></div></div>
+          </div>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  });
+  document.getElementById('promo-overview').innerHTML = html;
+}
+
+function renderPublications(filter='', statusF='') {
+  const sel = document.getElementById('pub-filter');
+  if (sel.options.length <= 1) {
+    [...new Set(data.publications.map(p=>p.status))].forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s.slice(0,38);sel.appendChild(o);});
+  }
+  const rows = data.publications.filter(p=>
+    (!filter||(p.title+p.author+p.type).toLowerCase().includes(filter.toLowerCase()))&&
+    (!statusF||p.status===statusF));
+  document.getElementById('pub-sub').textContent = rows.length + ' items';
+  document.getElementById('pub-tbody').innerHTML = rows.map(p => {
+    const idx = data.publications.indexOf(p);
+    const pr = p.promo||{};
+    return `<tr>
+      <td style="white-space:nowrap;font-size:10px;color:var(--text-faint)">${p.type}</td>
+      <td style="max-width:190px">${p.title.slice(0,60)}${p.title.length>60?'…':''}</td>
+      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${(p.author||'').slice(0,22)}</td>
+      <td><span class="badge ${statusColor(p.status)}">${p.status.slice(0,28)}</span></td>
+      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${excelDate(p.due)}</td>
+      <td>${promoSel('publications',idx,'social',pr.social)}</td>
+      <td>${promoSel('publications',idx,'newsletter',pr.newsletter)}</td>
+      <td>${promoSel('publications',idx,'website',pr.website)}</td>
+      <td><button class="btn btn-sm" onclick="editItem('publications',${idx})">Edit</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderAfkar(filter='') {
+  const rows = data.afkar.filter(a=>!filter||(a.title+a.author+a.topic).toLowerCase().includes(filter.toLowerCase()));
+  document.getElementById('afk-sub').textContent = rows.length + ' items';
+  document.getElementById('afk-tbody').innerHTML = rows.map(a => {
+    const idx = data.afkar.indexOf(a);
+    const pr = a.promo||{};
+    return `<tr>
+      <td style="font-size:11px;color:var(--text-faint)">${a.topic}</td>
+      <td style="white-space:nowrap;font-size:11px">${(a.author||'').slice(0,22)}</td>
+      <td style="max-width:180px;font-size:11px">${(a.title||'—').slice(0,55)}</td>
+      <td><span class="badge ${statusColor(a.status)}">${a.status.slice(0,28)}</span></td>
+      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${excelDate(a.due)}</td>
+      <td>${promoSel('afkar',idx,'social',pr.social)}</td>
+      <td>${promoSel('afkar',idx,'website',pr.website)}</td>
+      <td><button class="btn btn-sm" onclick="editItem('afkar',${idx})">Edit</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderPodcast() {
+  document.getElementById('pod-sub').textContent = data.podcast.length + ' items';
+  document.getElementById('pod-tbody').innerHTML = data.podcast.map((p,i) => {
+    const pr = p.promo||{};
+    return `<tr>
+      <td>${p.guest}</td>
+      <td style="max-width:180px">${p.title}</td>
+      <td><span class="badge ${statusColor(p.status)}">${p.status}</span></td>
+      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${excelDate(p.due)}</td>
+      <td>${promoSel('podcast',i,'social',pr.social)}</td>
+      <td>${promoSel('podcast',i,'newsletter',pr.newsletter)}</td>
+      <td>${promoSel('podcast',i,'website',pr.website)}</td>
+      <td>${p.link?`<a href="${p.link}" target="_blank" style="font-size:11px">↗ link</a>`:''}</td>
+      <td><button class="btn btn-sm" onclick="editItem('podcast',${i})">Edit</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderEvents(filter='', statusF='') {
+  const sel = document.getElementById('evt-filter');
+  if (sel.options.length <= 1) {
+    [...new Set(data.events.map(e=>e.status))].forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;sel.appendChild(o);});
+  }
+  const rows = data.events.filter(e=>
+    (!filter||(e.title+e.moderator).toLowerCase().includes(filter.toLowerCase()))&&
+    (!statusF||e.status===statusF));
+  document.getElementById('evt-sub').textContent = rows.length + ' items';
+  document.getElementById('evt-tbody').innerHTML = rows.map(e => {
+    const idx = data.events.indexOf(e);
+    const pr = e.promo||{};
+    return `<tr>
+      <td style="white-space:nowrap;font-size:11px">${e.type}</td>
+      <td style="max-width:150px;font-size:11px">${e.title.slice(0,50)}${e.title.length>50?'…':''}</td>
+      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${excelDate(e.date)}</td>
+      <td><span class="badge ${statusColor(e.status)}">${e.status}</span></td>
+      <td style="font-size:11px">${e.moderator}</td>
+      <td>${promoSel('events',idx,'invites',pr.invites)}</td>
+      <td>${promoSel('events',idx,'poster',pr.poster)}</td>
+      <td>${promoSel('events',idx,'social',pr.social)}</td>
+      <td>${promoSel('events',idx,'newsletter',pr.newsletter)}</td>
+      <td>${e.link?`<a href="${e.link}" target="_blank" style="font-size:11px">↗</a>`:''}</td>
+      <td><button class="btn btn-sm" onclick="editItem('events',${idx})">Edit</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderAll() {
+  renderStats();
+  barChart('pub-chart', data.publications, 'status');
+  barChart('evt-chart', data.events, 'status');
+  renderPromoOverview();
+  renderPublications(document.getElementById('pub-search').value, document.getElementById('pub-filter').value);
+  renderAfkar(document.getElementById('afk-search').value);
+  renderPodcast();
+  renderEvents(document.getElementById('evt-search').value, document.getElementById('evt-filter').value);
+}
+
+// ─── MODAL ───────────────────────────────────────────────────────────────────
+const fieldDefs = {
+  publications:[
+    {k:'type',l:'Type',t:'select',opts:['Issue Brief','Policy Note','Situation Assessment','Palestine Dossier','Event Report','Report','Commentary']},
+    {k:'title',l:'Title',t:'textarea'},{k:'author',l:'Author',t:'text'},
+    {k:'status',l:'Status',t:'text'},{k:'due',l:'Due date',t:'text'},{k:'notes',l:'Notes',t:'textarea'},
+    {k:'promo.social',l:'Social media',t:'psel'},{k:'promo.newsletter',l:'Newsletter',t:'psel'},{k:'promo.website',l:'Website',t:'psel'},
+  ],
+  afkar:[
+    {k:'topic',l:'Topic',t:'text'},{k:'author',l:'Author',t:'text'},{k:'title',l:'Title',t:'textarea'},
+    {k:'status',l:'Status',t:'textarea'},{k:'due',l:'Due date',t:'text'},{k:'link',l:'Link',t:'text'},
+    {k:'promo.social',l:'Social media',t:'psel'},{k:'promo.website',l:'Website',t:'psel'},
+  ],
+  podcast:[
+    {k:'guest',l:'Guest',t:'text'},{k:'title',l:'Title',t:'text'},{k:'status',l:'Status',t:'text'},
+    {k:'due',l:'Pub. date',t:'text'},{k:'link',l:'Link',t:'text'},
+    {k:'promo.social',l:'Social media',t:'psel'},{k:'promo.newsletter',l:'Newsletter',t:'psel'},{k:'promo.website',l:'Website',t:'psel'},
+  ],
+  events:[
+    {k:'type',l:'Type',t:'select',opts:['Webinar','Online Panel Discussion','Conference','Workshop']},
+    {k:'title',l:'Title',t:'textarea'},{k:'date',l:'Date',t:'text'},
+    {k:'status',l:'Status',t:'select',opts:['Confirmed','TBC','Cancelled','Completed']},
+    {k:'moderator',l:'Moderator',t:'text'},{k:'link',l:'Event link',t:'text'},{k:'notes',l:'Notes',t:'textarea'},
+    {k:'promo.invites',l:'Invites sent',t:'psel'},{k:'promo.poster',l:'Poster',t:'psel'},
+    {k:'promo.social',l:'Social media',t:'psel'},{k:'promo.newsletter',l:'Newsletter',t:'psel'},
+  ]
+};
+
+let _editSec=null, _editIdx=null, _addSec=null;
+
+window.editItem = (sec, idx) => { _editSec=sec; _editIdx=idx; _addSec=null; openModal('Edit item', sec, data[sec][idx]); };
+document.getElementById('add-btn').onclick = () => {
+  const tab = document.querySelector('.nav-item.active').dataset.tab;
+  const sec = tab==='overview'?'publications':tab;
+  _addSec=sec; _editSec=null; _editIdx=null;
+  openModal('Add ' + sec.slice(0,-1), sec, {});
+};
+
+function getVal(obj, k) { return k.split('.').reduce((o,key)=>o&&o[key]!==undefined?o[key]:'', obj); }
+
+function openModal(title, sec, item) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-delete').style.display = _editIdx!==null ? 'inline-block' : 'none';
+  const fs = fieldDefs[sec]||[];
+  let html='', inPromo=false;
+  fs.forEach(f => {
+    const isP = f.k.startsWith('promo.');
+    if (isP && !inPromo) { html+=`<div class="promo-divider"><div class="promo-divider-label">Promotional tracking</div>`; inPromo=true; }
+    if (!isP && inPromo) { html+='</div>'; inPromo=false; }
+    const val = getVal(item, f.k);
+    const id = 'mf_'+f.k.replace('.','_');
+    if (f.t==='psel') html+=`<div class="field"><label>${f.l}</label><select id="${id}">${PROMO_OPTS.map(o=>`<option${(val||'Not started')===o?' selected':''}>${o}</option>`).join('')}</select></div>`;
+    else if (f.t==='select') html+=`<div class="field"><label>${f.l}</label><select id="${id}">${f.opts.map(o=>`<option${val===o?' selected':''}>${o}</option>`).join('')}</select></div>`;
+    else if (f.t==='textarea') html+=`<div class="field"><label>${f.l}</label><textarea id="${id}">${val}</textarea></div>`;
+    else html+=`<div class="field"><label>${f.l}</label><input type="text" id="${id}" value="${String(val).replace(/"/g,'&quot;')}"></div>`;
+  });
+  if (inPromo) html+='</div>';
+  document.getElementById('modal-body').innerHTML = html;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+window.deleteItem = async () => {
+  if (_editSec && _editIdx!==null) {
+    const item = data[_editSec][_editIdx];
+    data[_editSec].splice(_editIdx, 1);
+    closeModal();
+    renderAll();
+    await removeItem(_editSec, item);
+  }
+};
+
+document.getElementById('modal-save').onclick = async () => {
+  const sec = _editSec||_addSec; if (!sec) return;
+  const base = _editIdx!==null ? {...data[sec][_editIdx]} : {};
+  if (!base.promo) base.promo = {};
+  (fieldDefs[sec]||[]).forEach(f => {
+    const el = document.getElementById('mf_'+f.k.replace('.','_'));
+    if (!el) return;
+    if (f.k.startsWith('promo.')) base.promo[f.k.split('.')[1]] = el.value;
+    else base[f.k] = el.value;
+  });
+  if (_editIdx!==null) data[sec][_editIdx]=base; else data[sec].push(base);
+  closeModal();
+  renderAll();
+  await saveItem(sec, base);
+};
+
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+document.getElementById('modal-cancel').onclick = closeModal;
+document.getElementById('modal-overlay').onclick = e => { if (e.target===document.getElementById('modal-overlay')) closeModal(); };
+
+// Nav
+document.querySelectorAll('.nav-item').forEach(n => n.addEventListener('click', () => {
+  document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+  n.classList.add('active');
+  document.getElementById(n.dataset.tab).classList.add('active');
+}));
+
+// Search / filter
+document.getElementById('pub-search').addEventListener('input', e=>renderPublications(e.target.value, document.getElementById('pub-filter').value));
+document.getElementById('pub-filter').addEventListener('change', e=>renderPublications(document.getElementById('pub-search').value, e.target.value));
+document.getElementById('afk-search').addEventListener('input', e=>renderAfkar(e.target.value));
+document.getElementById('evt-search').addEventListener('input', e=>renderEvents(e.target.value, document.getElementById('evt-filter').value));
+document.getElementById('evt-filter').addEventListener('change', e=>renderEvents(document.getElementById('evt-search').value, e.target.value));
+
+// Boot
+initMsal();
+</script>
+</body>
+</html>
