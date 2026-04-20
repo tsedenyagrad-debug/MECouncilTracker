@@ -453,7 +453,7 @@ async function resolveFileId() {
     const result = await graphGet('me/drive/root:/' + encodeURIComponent(cfg.filePath));
     fileId = result.id;
   } catch(e) {
-    const search = await graphGet('me/drive/root/search(q='' + encodeURIComponent(name) + '')');
+    const search = await graphGet("me/drive/root/search(q='" + encodeURIComponent(name) + "')");
     const match = (search.value || []).find(f => f.name === name);
     if (!match) throw new Error('File not found: ' + cfg.filePath);
     fileId = match.id;
