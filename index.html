@@ -233,8 +233,16 @@ a { color: var(--accent); text-decoration: none; }
           <div class="chart-block"><div class="chart-title">Publications pipeline</div><div id="pub-chart"></div></div>
           <div class="chart-block"><div class="chart-title">Events pipeline</div><div id="evt-chart"></div></div>
         </div>
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);font-family:var(--mono);margin-bottom:10px">Needs attention — stuck items</div>
-        <div id="attention-list"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div>
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);font-family:var(--mono);margin-bottom:10px">This week</div>
+            <div id="agenda-list"></div>
+          </div>
+          <div>
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);font-family:var(--mono);margin-bottom:10px">Pending</div>
+            <div id="attention-list"></div>
+          </div>
+        </div>
       </div>
 
       <!-- PUBLICATIONS -->
@@ -561,6 +569,45 @@ function barChart(cid, items, sec) {
     </div>`).join('');
 }
 
+function renderAgenda() {
+  const now = new Date();
+  const dow = now.getDay();
+  const startOfWeek = new Date(now);
+  startOfWeek.setHours(0,0,0,0);
+  startOfWeek.setDate(now.getDate() - (dow===0?6:dow-1));
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setDate(startOfWeek.getDate()+6);
+  endOfWeek.setHours(23,59,59,999);
+  const days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const items=[];
+  data.events.forEach((e,i)=>{if(!e.date)return;const d=new Date(e.date);if(isNaN(d))return;if(d>=startOfWeek&&d<=endOfWeek)items.push({date:d,label:e.type,title:e.title,sub:e.moderator,sec:'events',idx:i});});
+  data.publications.forEach((p,i)=>{const raw=p.due||p.date;if(!raw)return;const d=new Date(raw);if(isNaN(d))return;if(d>=startOfWeek&&d<=endOfWeek)items.push({date:d,label:p.type,title:p.title,sub:p.author,sec:'publications',idx:i});});
+  data.podcast.forEach((p,i)=>{if(!p.date)return;const d=new Date(p.date);if(isNaN(d))return;if(d>=startOfWeek&&d<=endOfWeek)items.push({date:d,label:'Podcast',title:p.title,sub:p.guest,sec:'podcast',idx:i});});
+  items.sort((a,b)=>a.date-b.date);
+  const el=document.getElementById('agenda-list');
+  const s=startOfWeek,e=endOfWeek;
+  const weekLabel=`${days[s.getDay()===0?6:s.getDay()-1]} ${s.getDate()} ${months[s.getMonth()]} – ${days[e.getDay()===0?6:e.getDay()-1]} ${e.getDate()} ${months[e.getMonth()]}`;
+  if(!items.length){el.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px"><div style="font-size:10px;font-family:var(--mono);color:var(--text-faint);margin-bottom:8px">${weekLabel}</div><div style="font-size:12px;color:var(--text-faint)">Nothing scheduled this week.</div></div>`;return;}
+  const byDay={};
+  items.forEach(item=>{const key=item.date.toDateString();if(!byDay[key])byDay[key]={date:item.date,items:[]};byDay[key].items.push(item);});
+  el.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden">
+    <div style="padding:9px 14px;border-bottom:1px solid var(--border);font-size:10px;font-family:var(--mono);color:var(--text-faint)">${weekLabel}</div>
+    ${Object.values(byDay).map(group=>{
+      const isToday=group.date.toDateString()===now.toDateString();
+      const dn=days[group.date.getDay()===0?6:group.date.getDay()-1];
+      return `<div style="border-bottom:0.5px solid var(--border)">
+        <div style="padding:8px 14px 3px;font-family:var(--mono);font-size:10px;font-weight:500;color:${isToday?'var(--accent)':'var(--text-muted)'}">${dn} ${group.date.getDate()} ${months[group.date.getMonth()]}${isToday?' <span style=\"background:var(--accent);color:#fff;padding:1px 5px;border-radius:8px;font-size:9px;margin-left:4px\">today</span>':''}</div>
+        ${group.items.map(item=>`<div style="padding:5px 14px 8px;display:flex;gap:10px;cursor:pointer" onclick="editItem('${item.sec}',${item.idx})">
+          <div style="width:3px;background:var(--accent);border-radius:2px;margin-top:3px;flex-shrink:0"></div>
+          <div><div style="font-size:11px;font-weight:500">${(item.title||'Untitled').slice(0,52)}${(item.title||'').length>52?'…':''}</div>
+          <div style="font-size:10px;color:var(--text-faint);margin-top:1px">${item.label}${item.sub?' · '+item.sub:''}</div></div>
+        </div>`).join('')}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
 function renderAttention() {
   const all = [
     ...data.publications.map(i=>({...i,_sec:'publications'})),
@@ -569,11 +616,11 @@ function renderAttention() {
     ...data.podcast.map(i=>({...i,_sec:'podcast'})),
   ].filter(i=>i.status!=='promoted'&&i.status!=='published');
   const el = document.getElementById('attention-list');
-  if(!all.length){el.innerHTML='<div style="font-size:12px;color:var(--text-faint);padding:12px 0">All items are published or promoted.</div>';return;}
-  el.innerHTML=`<div class="table-wrap"><table class="tbl"><thead><tr><th>Section</th><th>Title / Author</th><th>Status</th></tr></thead><tbody>${
-    all.slice(0,8).map(i=>`<tr>
-      <td style="font-size:10px;color:var(--text-faint);text-transform:capitalize">${i._sec}</td>
-      <td style="max-width:220px">${(i.title||i.guest||'Untitled').slice(0,55)}<br><span style="font-size:10px;color:var(--text-faint)">${i.author||i.moderator||''}</span></td>
+  if(!all.length){el.innerHTML='<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;font-size:12px;color:var(--text-faint)">All items promoted.</div>';return;}
+  el.innerHTML=`<div class="table-wrap"><table class="tbl"><thead><tr><th>Section</th><th>Title</th><th>Status</th></tr></thead><tbody>${
+    all.slice(0,10).map(i=>`<tr>
+      <td style="font-size:10px;color:var(--text-faint);text-transform:capitalize;white-space:nowrap">${i._sec}</td>
+      <td style="max-width:200px">${(i.title||i.guest||'Untitled').slice(0,48)}<br><span style="font-size:10px;color:var(--text-faint)">${i.author||i.moderator||''}</span></td>
       <td><span class="badge ${statusCls(i._sec,i.status)}">${statusLabel(i._sec,i.status)}</span></td>
     </tr>`).join('')
   }</tbody></table></div>`;
@@ -716,6 +763,7 @@ function renderAll() {
   renderStats();
   barChart('pub-chart', data.publications, 'publications');
   barChart('evt-chart', data.events, 'events');
+  renderAgenda();
   renderAttention();
   renderPublications(document.getElementById('pub-search').value, document.getElementById('pub-type-filter').value);
   renderAfkar(document.getElementById('afk-search').value);
