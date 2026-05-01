@@ -581,9 +581,9 @@ function renderAgenda() {
   const days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const items=[];
-  data.events.forEach((e,i)=>{if(!e.date)return;const d=new Date(e.date);if(isNaN(d))return;if(d>=startOfWeek&&d<=endOfWeek)items.push({date:d,label:e.type,title:e.title,sub:e.moderator,sec:'events',idx:i});});
-  data.publications.forEach((p,i)=>{const raw=p.due||p.date;if(!raw)return;const d=new Date(raw);if(isNaN(d))return;if(d>=startOfWeek&&d<=endOfWeek)items.push({date:d,label:p.type,title:p.title,sub:p.author,sec:'publications',idx:i});});
-  data.podcast.forEach((p,i)=>{if(!p.date)return;const d=new Date(p.date);if(isNaN(d))return;if(d>=startOfWeek&&d<=endOfWeek)items.push({date:d,label:'Podcast',title:p.title,sub:p.guest,sec:'podcast',idx:i});});
+  data.events.forEach((e,i)=>{if(!e.date)return;const d=new Date(e.date+'T00:00:00');if(isNaN(d))return;if(d>=startOfWeek&&d<=endOfWeek)items.push({date:d,label:e.type,title:e.title,sub:e.moderator,sec:'events',idx:i});});
+  data.publications.forEach((p,i)=>{const raw=p.due||p.date;if(!raw)return;const d=new Date((raw.includes('T')||raw.match(/^\d{4}-\d{2}-\d{2}$/))?raw+'T00:00:00':raw);if(isNaN(d))return;if(d>=startOfWeek&&d<=endOfWeek)items.push({date:d,label:p.type,title:p.title,sub:p.author,sec:'publications',idx:i});});
+  data.podcast.forEach((p,i)=>{if(!p.date)return;const d=new Date(p.date+'T00:00:00');if(isNaN(d))return;if(d>=startOfWeek&&d<=endOfWeek)items.push({date:d,label:'Podcast',title:p.title,sub:p.guest,sec:'podcast',idx:i});});
   items.sort((a,b)=>a.date-b.date);
   const el=document.getElementById('agenda-list');
   const s=startOfWeek,e=endOfWeek;
@@ -665,7 +665,7 @@ function renderPublications(filter='', typeF='') {
       <td style="font-size:10px;color:var(--text-faint);white-space:nowrap">${p.type}</td>
       <td style="max-width:180px">${p.title.slice(0,55)}${p.title.length>55?'…':''}</td>
       <td style="font-size:11px;color:var(--text-muted);white-space:nowrap">${(p.author||'').slice(0,20)}</td>
-      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${p.date||'—'}</td>
+      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${fromInputDate(p.date)||'—'}</td>
       <td><span class="badge ${statusCls('publications',p.status)}">${statusLabel('publications',p.status)}</span></td>
       <td>${needsLayout?promoSel('pub_layout',idx,'layout',p.layout):'<span style="font-size:10px;color:var(--text-faint)">N/A</span>'}</td>
       <td>${promoSel('pub_social1',idx,'social1',p.social1)}</td>
@@ -696,7 +696,7 @@ function renderAfkar(filter='') {
       <td style="font-size:11px;color:var(--text-faint)">${a.topic}</td>
       <td style="white-space:nowrap;font-size:11px">${(a.author||'').slice(0,22)}</td>
       <td style="max-width:160px;font-size:11px">${(a.title||'—').slice(0,50)}</td>
-      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${a.date||'—'}</td>
+      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${fromInputDate(a.date)||'—'}</td>
       <td><span class="badge ${statusCls('afkar',a.status)}">${statusLabel('afkar',a.status)}</span></td>
       <td>${promoSel('afk_social',idx,'social',a.social)}</td>
       <td>${promoSel('afk_newsletter',idx,'newsletter',a.newsletter)}</td>
@@ -724,7 +724,7 @@ function renderEvents(filter='', typeF='') {
     return `<tr>
       <td style="font-size:10px;white-space:nowrap">${e.type}</td>
       <td style="max-width:160px;font-size:11px">${e.title.slice(0,50)}${e.title.length>50?'…':''}</td>
-      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${e.date||''}</td>
+      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${fromInputDate(e.date)||''}</td>
       <td style="font-size:11px">${e.moderator||''}</td>
       <td><span class="badge ${statusCls('events',e.status)}">${statusLabel('events',e.status)}</span></td>
       <td>${promoSel('evt_social',idx,'social',e.social)}</td>
@@ -752,7 +752,7 @@ function renderPodcast(filter='') {
     <td>${p.guest}</td>
     <td style="font-size:11px;color:var(--text-faint)">${p.topic||''}</td>
     <td style="max-width:160px">${p.title}</td>
-    <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${p.date||''}</td>
+    <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${fromInputDate(p.date)||''}</td>
     <td><span class="badge ${statusCls('podcast',p.status)}">${statusLabel('podcast',p.status)}</span></td>
     <td>${promoSel('pod_social',i,'social',p.social)}</td>
     <td>${promoSel('pod_newsletter',i,'newsletter',p.newsletter)}</td>
@@ -781,12 +781,29 @@ window.updatePromo = (secField, idx, field, val) => {
 };
 
 // ─── MODAL ──────────────────────────────────────────────────────────────────
+// Convert any date string to YYYY-MM-DD for input[type=date]
+function toInputDate(val) {
+  if (!val) return '';
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  const d = new Date(val);
+  if (isNaN(d)) return '';
+  return d.toISOString().split('T')[0];
+}
+// Convert YYYY-MM-DD to display string for tables/agenda
+function fromInputDate(val) {
+  if (!val) return '';
+  const d = new Date(val + 'T00:00:00');
+  if (isNaN(d)) return val;
+  return d.toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'});
+}
+
 const FIELD_DEFS = {
   publications: [
     {k:'type',l:'Type',t:'select',opts:PUB_TYPES},
     {k:'title',l:'Title',t:'textarea'},
     {k:'author',l:'Author',t:'text'},
-    {k:'date',l:'Publication date (e.g. Apr 30, 2025)',t:'text'},
+    {k:'date',l:'Publication date',t:'date'},
     {k:'status',l:'Stage',t:'wfsel',sec:'publications'},
     {k:'layout',l:'Layout',t:'promosel'},
     {k:'social1',l:'Social promo 1',t:'promosel'},
@@ -798,7 +815,7 @@ const FIELD_DEFS = {
     {k:'topic',l:'Topic',t:'text'},
     {k:'author',l:'Author',t:'text'},
     {k:'title',l:'Title',t:'textarea'},
-    {k:'date',l:'Publication date (e.g. Apr 30, 2025)',t:'text'},
+    {k:'date',l:'Publication date',t:'date'},
     {k:'status',l:'Stage',t:'wfsel',sec:'afkar'},
     {k:'social',l:'Social promo',t:'promosel'},
     {k:'newsletter',l:'Newsletter',t:'promosel'},
@@ -807,7 +824,7 @@ const FIELD_DEFS = {
   events: [
     {k:'type',l:'Type',t:'select',opts:['Webinar','Online Panel']},
     {k:'title',l:'Title',t:'textarea'},
-    {k:'date',l:'Event date (e.g. Apr 30, 2025)',t:'text'},
+    {k:'date',l:'Event date',t:'date'},
     {k:'moderator',l:'Moderator',t:'text'},
     {k:'status',l:'Stage',t:'wfsel',sec:'events'},
     {k:'summary',l:'Event summary',t:'textarea'},
@@ -819,7 +836,7 @@ const FIELD_DEFS = {
     {k:'guest',l:'Guest name',t:'text'},
     {k:'topic',l:'Topic',t:'text'},
     {k:'title',l:'Title',t:'text'},
-    {k:'date',l:'Event date (e.g. Apr 30, 2025)',t:'text'},
+    {k:'date',l:'Event date',t:'date'},
     {k:'status',l:'Stage',t:'wfsel',sec:'podcast'},
     {k:'social',l:'Social promo',t:'promosel'},
     {k:'newsletter',l:'Newsletter',t:'promosel'},
@@ -858,6 +875,8 @@ function openModal(title, sec, item) {
       html+=`<div class="field"><label>${f.l}</label><select id="${id}">${f.opts.map(o=>`<option${val===o?' selected':''}>${o}</option>`).join('')}</select></div>`;
     } else if (f.t==='textarea') {
       html+=`<div class="field"><label>${f.l}</label><textarea id="${id}">${val}</textarea></div>`;
+    } else if (f.t==='date') {
+      html+=`<div class="field"><label>${f.l}</label><input type="date" id="${id}" value="${toInputDate(val)}" style="cursor:pointer"></div>`;
     } else {
       html+=`<div class="field"><label>${f.l}</label><input type="text" id="${id}" value="${String(val).replace(/"/g,'&quot;')}"></div>`;
     }
@@ -875,7 +894,8 @@ document.getElementById('modal-save').onclick = () => {
   const sec = _eSec||_aSec; if (!sec) return;
   const base = _eIdx!==null?{...data[sec][_eIdx]}:{};
   (FIELD_DEFS[sec]||[]).forEach(f=>{
-    const el = document.getElementById('mf_'+f.k); if(!el) return; base[f.k]=el.value;
+    const el = document.getElementById('mf_'+f.k); if(!el) return;
+    base[f.k] = f.t==='date' ? el.value : el.value; // store as YYYY-MM-DD, display via fromInputDate
   });
   if (_eIdx!==null) data[sec][_eIdx]=base; else data[sec].push(base);
   closeModal(); renderAll(); saveItem(sec, base);
@@ -903,6 +923,15 @@ document.getElementById('pod-search').addEventListener('input',e=>renderPodcast(
 
 // Boot
 initMsal();
+
+// Auto-refresh every 30 minutes
+setInterval(() => {
+  if (accessToken) {
+    loadAllData();
+    const t = new Date().toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
+    console.log('Auto-refreshed at', t);
+  }
+}, 30 * 60 * 1000);
 </script>
 </body>
 </html>
